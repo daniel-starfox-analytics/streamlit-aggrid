@@ -207,3 +207,4 @@ quick_examples*
 test/*
 streamlit-aggrid-examples/*
 streamlit-aggrid-examples
+*.csv

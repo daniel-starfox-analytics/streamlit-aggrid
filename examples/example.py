@@ -1,37 +1,134 @@
 import streamlit as st
+import pandas as pd
+from st_aggrid import AgGrid, GridOptionsBuilder
 
+# Set page config to wide mode
+st.set_page_config(layout="wide")
+
+@st.cache_data
+def load_data():
+    # Replace with your actual CSV file path
+    data = pd.read_csv("/workspaces/streamlit-aggrid/examples/bquxjob_6c59d1a9_1946f6e52da.csv")
+    return data
+
+st.title("Event Parameters Analysis")
+
+# Use the full width of the page
 st.markdown("""
-<style>
-    .flex-container {
-    display: flex;  
-    }
-
-    .flex-child {
-        flex: 1
-    }  
-
-    .flex-child:first-child {
-        margin-right: 20px;
-    } 
-
-    p {
-        position: absolute;
-        bottom:0;
-        text-align: center;
-    }
-
-
-</style>
-
-<div class="flex-container">
-    <div class="flex-child">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Pro 6.1.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2022 Fonticons, Inc. --><path d="M288 256C288 273.7 273.7 288 256 288C238.3 288 224 273.7 224 256C224 238.3 238.3 224 256 224C273.7 224 288 238.3 288 256zM0 256C0 114.6 114.6 0 256 0C397.4 0 512 114.6 512 256C512 397.4 397.4 512 256 512C114.6 512 0 397.4 0 256zM325.1 306.7L380.6 162.4C388.1 142.1 369 123.9 349.6 131.4L205.3 186.9C196.8 190.1 190.1 196.8 186.9 205.3L131.4 349.6C123.9 369 142.1 388.1 162.4 380.6L306.7 325.1C315.2 321.9 321.9 315.2 325.1 306.7V306.7z"/></svg>
-    </div>
-    <div class="flex-child">
-        <p> 
-        Examples moved to: <br> <a href="https://pablocfonseca-streamlit-aggrid-examples-example-jyosi3.streamlitapp.com/">https://pablocfonseca-streamlit-aggrid-examples-example-jyosi3.streamlitapp.com/</a>
-        </p>
-    </div>
-</div>
-
+    <style>
+        .main > div {
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+        .stDataFrame {
+            width: 100%;
+        }
+    </style>
 """, unsafe_allow_html=True)
+
+data = load_data()
+shouldDisplayPivoted = st.checkbox("Show Pivoted View")
+
+gb = GridOptionsBuilder.from_dataframe(data)
+
+# Configure common column properties
+gb.configure_default_column(
+    resizable=True,
+    filterable=True,
+    sortable=True,
+    editable=False,
+    flex=1  # Make columns flex to fill space
+)
+
+# Configure the event_name column as the main grouping column
+gb.configure_column(
+    field="event_name",
+    header_name="Event Name",
+    minWidth=200,
+    rowGroup=True,
+    pivot=True,
+    hide=shouldDisplayPivoted
+)
+
+# Configure param_type as a secondary grouping column
+gb.configure_column(
+    field="param_type",
+    header_name="Parameter Type",
+    minWidth=150,
+    rowGroup=True,
+    hide=shouldDisplayPivoted
+)
+
+# Configure param_key as the pivot column
+gb.configure_column(
+    field="param_key",
+    header_name="Parameter Key",
+    rowGroup=True,
+    pivot=True,
+    hide=True
+)
+
+# Configure value columns
+value_columns = [
+    "event_total_count",
+    "total_occurrences",
+    "valid_occurrences",
+    "coverage_percentage",
+    "is_always_present"
+]
+
+for col in value_columns:
+    gb.configure_column(
+        field=col,
+        header_name=col.replace("_", " ").title(),
+        type=["numericColumn"],
+        aggFunc="first",
+        valueFormatter="value.toLocaleString()" if "occurrences" in col else None,
+        minWidth=120  # Ensure minimum width for readability
+    )
+
+# Configure grid options for pivoting
+gb.configure_grid_options(
+    pivotMode=shouldDisplayPivoted,
+    suppressAggFuncInHeader=True,
+    autoGroupColumnDef=dict(
+        minWidth=250,
+        pinned="left",
+        cellRendererParams=dict(
+            suppressCount=True,
+            innerRenderer="agGroupCellRenderer"
+        )
+    ),
+    domLayout='normal',  # Use normal layout for better width control
+    width='100%'  # Set grid width to 100%
+)
+
+# Build and display the grid
+go = gb.build()
+
+# Create a container for the grid that uses the full width
+with st.container():
+    AgGrid(
+        data,
+        gridOptions=go,
+        height=600,
+        enable_enterprise_modules=True,
+        allow_unsafe_jscode=True,
+        fit_columns_on_grid_load=True,  # Make columns fit the available space
+        update_mode='value_changed',
+        theme='streamlit',  # Use streamlit theme for better integration
+        key='grid1'
+    )
+
+# Add summary statistics in a full-width container
+if not shouldDisplayPivoted:
+    st.subheader("Summary Statistics")
+    cols = st.columns(4)  # Create 4 columns for better spacing
+    with cols[0]:
+        st.metric("Total Events", len(data['event_name'].unique()))
+    with cols[1]:
+        st.metric("Total Parameters", data['param_key'].nunique())
+    with cols[2]:
+        st.metric("Average Coverage", f"{data['coverage_percentage'].mean():.2f}%")
+    with cols[3]:
+        st.metric("Always Present Parameters", data['is_always_present'].sum())
